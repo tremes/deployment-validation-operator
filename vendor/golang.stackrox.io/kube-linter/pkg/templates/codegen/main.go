@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -313,7 +312,7 @@ func processTemplate(dir string) error {
 	}
 
 	outFileName := filepath.Join(dir, "internal", "params", "gen-params.go")
-	outF, err := os.Create(outFileName)
+	outF, err := os.Create(filepath.Clean(outFileName))
 	if err != nil {
 		return errors.Wrap(err, "creating output file")
 	}
@@ -325,7 +324,7 @@ func processTemplate(dir string) error {
 }
 
 func mainCmd() error {
-	fileInfos, err := ioutil.ReadDir(".")
+	fileInfos, err := os.ReadDir(".")
 	if err != nil {
 		return err
 	}
