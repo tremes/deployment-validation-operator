@@ -31,9 +31,16 @@ func RunValidationsForObjects(objects []client.Object, namespaceUID string) (Val
 	// TODO check controller with no replicas????
 	lintCtxs := []lintcontext.LintContext{}
 	for _, obj := range objects {
+		if isControllersWithNoReplicas(obj) {
+			continue
+		}
 		lintCtx := &lintContextImpl{}
 		lintCtx.addObjects(lintcontext.Object{K8sObject: obj})
 		lintCtxs = append(lintCtxs, lintCtx)
+	}
+
+	if len(lintCtxs) == 0 {
+		return ObjectValidationIgnored, nil
 	}
 	result, err := run.Run(lintCtxs, engine.CheckRegistry(), engine.EnabledChecks())
 	if err != nil {
@@ -46,7 +53,7 @@ func RunValidationsForObjects(objects []client.Object, namespaceUID string) (Val
 }
 
 // isControllersWithNoReplicas checks if the provided object has no replicas
-func isControllersWithNoReplicas(obj client.Object, promLabels prometheus.Labels) bool {
+func isControllersWithNoReplicas(obj client.Object) bool {
 	objValue := reflect.Indirect(reflect.ValueOf(obj))
 	spec := objValue.FieldByName("Spec")
 	if spec.IsValid() {
@@ -56,7 +63,8 @@ func isControllersWithNoReplicas(obj client.Object, promLabels prometheus.Labels
 
 			// clear labels if we fail to get a value for numReplicas, or if value is <= 0
 			if !ok || numReplicas == nil || *numReplicas <= 0 {
-				engine.DeleteMetrics(promLabels)
+				req := NewRequestFromObject(obj)
+				engine.DeleteMetrics(req.ToPromLabels())
 				return true
 			}
 		}
@@ -109,7 +117,7 @@ func RunValidations(request Request, obj client.Object) (ValidationOutcome, erro
 
 	// If controller has no replicas clear existing metrics and
 	// do not run any validations
-	if isControllersWithNoReplicas(obj, promLabels) {
+	if isControllersWithNoReplicas(obj) {
 		return ObjectValidationIgnored, nil
 	}
 
