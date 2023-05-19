@@ -144,6 +144,11 @@ func setupManager(log logr.Logger, opts options.Options) (manager.Manager, error
 		return nil, fmt.Errorf("adding metrics server to manager: %w", err)
 	}
 
+	cmWatcher := controller.NewConfigMapWatcher(mgr)
+	if err := mgr.Add(cmWatcher); err != nil {
+		return nil, fmt.Errorf("adding metrics server to manager: %w", err)
+	}
+
 	log.Info("Initializing Validation Engine")
 
 	if err := validations.InitializeValidationEngine(opts.ConfigFile, reg); err != nil {
