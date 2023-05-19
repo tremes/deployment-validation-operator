@@ -13,7 +13,7 @@ import (
 )
 
 type ConfigMapWatcher interface {
-	ConfigChanged() <-chan string
+	ConfigChanged() <-chan struct{}
 }
 
 type configMapWatcher struct {
