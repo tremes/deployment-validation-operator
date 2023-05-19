@@ -9,10 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func DeleteMetrics(labels prometheus.Labels) {
-	engine.DeleteMetrics(labels)
-}
-
 func newGaugeVecMetric(
 	name, help string, labelNames []string, constLabels prometheus.Labels,
 ) *prometheus.GaugeVec {

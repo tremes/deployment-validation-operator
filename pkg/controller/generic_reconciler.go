@@ -34,10 +34,13 @@ type GenericReconciler struct {
 	client                client.Client
 	discovery             discovery.DiscoveryInterface
 	logger                logr.Logger
+	validationEngine      validations.ValidationEngine
+	cmWatcher             ConfigMapWatcher
 }
 
 // NewGenericReconciler returns a GenericReconciler struct
-func NewGenericReconciler(client client.Client, discovery discovery.DiscoveryInterface) (*GenericReconciler, error) {
+func NewGenericReconciler(client client.Client, discovery discovery.DiscoveryInterface,
+	engine validations.ValidationEngine, cmWatcher ConfigMapWatcher) (*GenericReconciler, error) {
 	listLimit, err := getListLimit()
 	if err != nil {
 		return nil, err
@@ -51,6 +54,8 @@ func NewGenericReconciler(client client.Client, discovery discovery.DiscoveryInt
 		objectValidationCache: newValidationCache(),
 		currentObjects:        newValidationCache(),
 		logger:                ctrl.Log.WithName("reconcile"),
+		validationEngine:      engine,
+		cmWatcher:             cmWatcher,
 	}, nil
 }
 
@@ -89,8 +94,23 @@ func (gr *GenericReconciler) AddToManager(mgr manager.Manager) error {
 	return mgr.Add(gr)
 }
 
+func (gr *GenericReconciler) listenToConfigChanges(ctx context.Context) {
+	for {
+		select {
+		case name := <-gr.cmWatcher.ConfigChanged():
+			fmt.Println("================== GOT NAME ", name)
+			gr.validationEngine.SetEnabledChecks([]string{"some crazy checks"})
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 // Start validating the given object kind every interval.
 func (gr *GenericReconciler) Start(ctx context.Context) error {
+
+	go gr.listenToConfigChanges(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -239,7 +259,7 @@ func (gr *GenericReconciler) reconcileGroupOfObjects(ctx context.Context,
 		cliObjects = append(cliObjects, typedClientObject)
 	}
 
-	outcome, err := validations.RunValidationsForObjects(cliObjects, namespaceUID)
+	outcome, err := gr.validationEngine.RunValidationsForObjects(cliObjects, namespaceUID)
 	if err != nil {
 		return fmt.Errorf("running validations: %w", err)
 	}
@@ -302,7 +322,7 @@ func (gr *GenericReconciler) handleResourceDeletions() {
 			UID:          v.uid,
 		}
 
-		validations.DeleteMetrics(req.ToPromLabels())
+		gr.validationEngine.DeleteMetrics(req.ToPromLabels())
 
 		gr.objectValidationCache.removeKey(k)
 

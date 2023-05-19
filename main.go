@@ -120,7 +120,22 @@ func setupManager(log logr.Logger, opts options.Options) (manager.Manager, error
 		return nil, fmt.Errorf("initializing discovery client: %w", err)
 	}
 
-	gr, err := controller.NewGenericReconciler(mgr.GetClient(), discoveryClient)
+	log.Info("Initializing Prometheus Registry")
+
+	reg := prometheus.NewRegistry()
+
+	log.Info("Initializing Validation Engine")
+	validationEngine, err := validations.NewValidationEngine(opts.ConfigFile, reg)
+	if err != nil {
+		return nil, fmt.Errorf("initializing validation engine: %w", err)
+	}
+
+	cmWatcher := controller.NewConfigMapWatcher(mgr)
+	if err := mgr.Add(cmWatcher); err != nil {
+		return nil, fmt.Errorf("adding metrics server to manager: %w", err)
+	}
+
+	gr, err := controller.NewGenericReconciler(mgr.GetClient(), discoveryClient, validationEngine, &cmWatcher)
 	if err != nil {
 		return nil, fmt.Errorf("initializing generic reconciler: %w", err)
 	}
@@ -128,10 +143,6 @@ func setupManager(log logr.Logger, opts options.Options) (manager.Manager, error
 	if err = gr.AddToManager(mgr); err != nil {
 		return nil, fmt.Errorf("adding generic reconciler to manager: %w", err)
 	}
-
-	log.Info("Initializing Prometheus Registry")
-
-	reg := prometheus.NewRegistry()
 
 	log.Info(fmt.Sprintf("Initializing Prometheus metrics endpoint on %q", opts.MetricsEndpoint()))
 
@@ -142,17 +153,6 @@ func setupManager(log logr.Logger, opts options.Options) (manager.Manager, error
 
 	if err := mgr.Add(srv); err != nil {
 		return nil, fmt.Errorf("adding metrics server to manager: %w", err)
-	}
-
-	cmWatcher := controller.NewConfigMapWatcher(mgr)
-	if err := mgr.Add(cmWatcher); err != nil {
-		return nil, fmt.Errorf("adding metrics server to manager: %w", err)
-	}
-
-	log.Info("Initializing Validation Engine")
-
-	if err := validations.InitializeValidationEngine(opts.ConfigFile, reg); err != nil {
-		return nil, fmt.Errorf("initializing validation engine: %w", err)
 	}
 
 	return mgr, nil

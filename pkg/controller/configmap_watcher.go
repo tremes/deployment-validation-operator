@@ -12,16 +12,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
+type ConfigMapWatcher interface {
+	ConfigChanged() <-chan string
+}
+
 type configMapWatcher struct {
 	cli client.Client
 	ca  managerCache.Cache
+	ch  chan struct{}
 }
 
 func NewConfigMapWatcher(m manager.Manager) configMapWatcher {
-
+	ch := make(chan struct{})
 	return configMapWatcher{
 		cli: m.GetClient(),
 		ca:  m.GetCache(),
+		ch:  ch,
 	}
 }
 
@@ -49,12 +55,16 @@ func (c configMapWatcher) Start(ctx context.Context) error {
 			if err != nil {
 				fmt.Println("============ ERROR ", err)
 			}
-			fmt.Println("===================== UPDATE CALLED ", obj.GetName())
 			if obj.GetName() == "deployment-validation-operator-config" {
 				fmt.Println("===================== OLD ", oldObj)
 				fmt.Println("===================== NEW ", newObj)
+				c.ch <- struct{}{}
 			}
 		},
 	})
 	return nil
+}
+
+func (c *configMapWatcher) ConfigChanged() <-chan struct{} {
+	return c.ch
 }

@@ -1,17 +1,10 @@
 package validations
 
 import (
-	"fmt"
-	"reflect"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/app-sre/deployment-validation-operator/pkg/utils"
-
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.stackrox.io/kube-linter/pkg/lintcontext"
-	"golang.stackrox.io/kube-linter/pkg/run"
 )
 
 var log = logf.Log.WithName("validations")
@@ -25,7 +18,7 @@ var (
 	ObjectValidationIgnored ValidationOutcome = "object validation ignored"
 )
 
-// RunValidationsForObjects runs validation for the group of related objects
+/* // RunValidationsForObjects runs validation for the group of related objects
 func RunValidationsForObjects(objects []client.Object, namespaceUID string) (ValidationOutcome, error) {
 	lintCtx := &lintContextImpl{}
 	for _, obj := range objects {
@@ -110,9 +103,9 @@ func processResult(result run.Result, namespaceUID string) (ValidationOutcome, e
 		}
 	}
 	return outcome, nil
-}
+} */
 
-// RunValidations will run all the registered validations
+/* // RunValidations will run all the registered validations
 func RunValidations(request Request, obj client.Object) (ValidationOutcome, error) {
 	log.V(2).Info("validation", "kind", request.Kind)
 
@@ -145,7 +138,7 @@ func RunValidations(request Request, obj client.Object) (ValidationOutcome, erro
 	engine.ClearMetrics(result.Reports, promLabels)
 
 	return processResult(result, request.NamespaceUID)
-}
+} */
 
 // NewRequestFromObject converts a client.Object into
 // a validation request. Note that the NamespaceUID of the
