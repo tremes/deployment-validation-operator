@@ -189,7 +189,7 @@ func (gr *GenericReconciler) reconcileEverything(ctx context.Context) error {
 func (gr *GenericReconciler) groupAppObjects(ctx context.Context,
 	namespace string, gvks []schema.GroupVersionKind) (map[string][]*unstructured.Unstructured, error) {
 	relatedObjects := make(map[string][]*unstructured.Unstructured)
-
+	var knownObjects []*unstructured.Unstructured
 	// sorting GVKs is very important for getting the consistent results
 	// when trying to match the 'app' label values. We must be sure that
 	// resources from the group apps/v1 are processed between first.
@@ -220,7 +220,8 @@ func (gr *GenericReconciler) groupAppObjects(ctx context.Context,
 				obj := &list.Items[i]
 				unstructured.RemoveNestedField(obj.Object, "metadata", "managedFields")
 				processResourceLabels(obj, relatedObjects)
-				gr.processResourceSelectors(obj, relatedObjects)
+				knownObjects = append(knownObjects, obj)
+				//gr.processResourceSelectors(obj, relatedObjects)
 			}
 
 			listContinue := list.GetContinue()
@@ -229,6 +230,9 @@ func (gr *GenericReconciler) groupAppObjects(ctx context.Context,
 			}
 			listOptions.Continue = listContinue
 		}
+	}
+	for _, obj := range knownObjects {
+		gr.processResourceSelectors(obj, relatedObjects)
 	}
 	return relatedObjects, nil
 }
@@ -256,6 +260,10 @@ func (gr *GenericReconciler) processResourceSelectors(obj *unstructured.Unstruct
 	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
 	if err != nil {
 		gr.logger.Error(err, "cannot convert label selector for object", obj.GetKind(), obj.GetName())
+		return
+	}
+
+	if selector == labels.Nothing() {
 		return
 	}
 
