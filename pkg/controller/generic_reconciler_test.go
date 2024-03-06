@@ -737,7 +737,7 @@ func TestGetNamespacedResourcesGVK(t *testing.T) {
 	for _, ut := range unitTests {
 		t.Run(ut.name, func(t *testing.T) {
 			// Given
-			gr := GenericReconciler{}
+			gr := ValidationController{}
 
 			// When
 			test := gr.getNamespacedResourcesGVK(ut.arg)
@@ -1029,7 +1029,7 @@ func TestListLimit(t *testing.T) {
 	assert.Equal(t, int64(2), testReconciler.listLimit)
 }
 
-func createTestReconciler(scheme *runtime.Scheme, objects []client.Object) (*GenericReconciler, error) {
+func createTestReconciler(scheme *runtime.Scheme, objects []client.Object) (*ValidationController, error) {
 	cliBuilder := clifake.NewClientBuilder()
 	if scheme != nil {
 		cliBuilder.WithScheme(scheme)
@@ -1044,7 +1044,7 @@ func createTestReconciler(scheme *runtime.Scheme, objects []client.Object) (*Gen
 	if err != nil {
 		return nil, err
 	}
-	return NewGenericReconciler(client, cli.Discovery(), &configmap.Watcher{}, ve)
+	return NewController(client, cli.Discovery(), &configmap.Watcher{}, ve)
 }
 
 /* Benchmark used reverted changes in d80ec1f. Preserving it just in case the changes come back in near future.

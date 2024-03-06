@@ -29,12 +29,12 @@ import (
 )
 
 var (
-	_    manager.Runnable = &GenericReconciler{}
+	_    manager.Runnable = &LegacyGenericReconciler{}
 	once sync.Once
 )
 
 // GenericReconciler watches a defined object
-type GenericReconciler struct {
+type LegacyGenericReconciler struct {
 	listLimit             int64
 	watchNamespaces       *watchNamespacesCache
 	objectValidationCache *validationCache
@@ -53,13 +53,13 @@ func NewGenericReconciler(
 	discovery discovery.DiscoveryInterface,
 	cmw *configmap.Watcher,
 	validationEngine validations.Interface,
-) (*GenericReconciler, error) {
+) (*LegacyGenericReconciler, error) {
 	listLimit, err := getListLimit()
 	if err != nil {
 		return nil, err
 	}
 
-	return &GenericReconciler{
+	return &LegacyGenericReconciler{
 		client:                client,
 		discovery:             discovery,
 		listLimit:             listLimit,
@@ -103,12 +103,12 @@ func intFromEnv(envName string) (int, bool, error) {
 }
 
 // AddToManager will add the reconciler for the configured obj to a manager.
-func (gr *GenericReconciler) AddToManager(mgr manager.Manager) error {
+func (gr *LegacyGenericReconciler) AddToManager(mgr manager.Manager) error {
 	return mgr.Add(gr)
 }
 
 // Start validating the given object kind every interval.
-func (gr *GenericReconciler) Start(ctx context.Context) error {
+func (gr *LegacyGenericReconciler) Start(ctx context.Context) error {
 	go gr.LookForConfigUpdates(ctx)
 
 	for {
@@ -144,7 +144,7 @@ func (gr *GenericReconciler) Start(ctx context.Context) error {
 	}
 }
 
-func (gr *GenericReconciler) LookForConfigUpdates(ctx context.Context) {
+func (gr *LegacyGenericReconciler) LookForConfigUpdates(ctx context.Context) {
 	for {
 		select {
 		case <-gr.cmWatcher.ConfigChanged():
@@ -175,7 +175,7 @@ func (gr *GenericReconciler) LookForConfigUpdates(ctx context.Context) {
 	}
 }
 
-func (gr *GenericReconciler) reconcileEverything(ctx context.Context) error {
+func (gr *LegacyGenericReconciler) reconcileEverything(ctx context.Context) error {
 	once.Do(func() {
 		apiResources, err := reconcileResourceList(gr.discovery, gr.client.Scheme())
 		if err != nil {
@@ -209,7 +209,7 @@ func (gr *GenericReconciler) reconcileEverything(ctx context.Context) error {
 
 // groupAppObjects iterates over provided GroupVersionKind in given namespace
 // and returns map of objects grouped by their "app" label
-func (gr *GenericReconciler) groupAppObjects(ctx context.Context,
+func (gr *LegacyGenericReconciler) groupAppObjects(ctx context.Context,
 	namespace string, gvks []schema.GroupVersionKind) (map[string][]*unstructured.Unstructured, error) {
 	relatedObjects := make(map[string][]*unstructured.Unstructured)
 
@@ -243,7 +243,7 @@ func (gr *GenericReconciler) groupAppObjects(ctx context.Context,
 				obj := &list.Items[i]
 				unstructured.RemoveNestedField(obj.Object, "metadata", "managedFields")
 				unstructured.RemoveNestedField(obj.Object, "status")
-				processResourceLabels(obj, relatedObjects)
+				//processResourceLabels(obj, relatedObjects)
 				gr.processResourceSelectors(obj, relatedObjects)
 			}
 
@@ -260,8 +260,8 @@ func (gr *GenericReconciler) groupAppObjects(ctx context.Context,
 // processResourceLabels reads resource labels and if the labels
 // are not empty then format them into string and put the string value
 // as key and the object as a value into "relatedObjects" map
-func processResourceLabels(obj *unstructured.Unstructured,
-	relatedObjects map[string][]*unstructured.Unstructured) {
+/* func processResourceLabels(obj client.Object,
+	relatedObjects map[string][]client.Object) {
 
 	objLabels := utils.GetLabels(obj)
 	if len(objLabels) == 0 {
@@ -269,12 +269,12 @@ func processResourceLabels(obj *unstructured.Unstructured,
 	}
 	labelsString := labels.FormatLabels(objLabels)
 	relatedObjects[labelsString] = append(relatedObjects[labelsString], obj)
-}
+} */
 
 // processResourceSelectors reads resource selector and then tries to match
 // the selector to known labels (keys in the relatedObjects map). If a match is found then
 // the object is added to the corresponding group (values in the relatedObjects map).
-func (gr *GenericReconciler) processResourceSelectors(obj *unstructured.Unstructured,
+func (gr *LegacyGenericReconciler) processResourceSelectors(obj *unstructured.Unstructured,
 	relatedObjects map[string][]*unstructured.Unstructured) {
 	labelSelector := utils.GetLabelSelector(obj)
 	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
@@ -299,7 +299,7 @@ func (gr *GenericReconciler) processResourceSelectors(obj *unstructured.Unstruct
 	}
 }
 
-func (gr *GenericReconciler) processNamespacedResources(
+func (gr *LegacyGenericReconciler) processNamespacedResources(
 	ctx context.Context, gvks []schema.GroupVersionKind, namespaces *[]namespace) error {
 
 	for _, ns := range *namespaces {
@@ -325,8 +325,7 @@ func (gr *GenericReconciler) processNamespacedResources(
 	return nil
 }
 
-func (gr *GenericReconciler) reconcileGroupOfObjects(objs []*unstructured.Unstructured, ns namespace) error {
-
+func (gr *LegacyGenericReconciler) reconcileGroupOfObjects(objs []*unstructured.Unstructured, ns namespace) error {
 	if gr.allObjectsValidated(objs, ns.uid) {
 		gr.logger.V(1).Info("All objects are validated, ending loop", "ns", ns.name)
 		return nil
@@ -354,7 +353,7 @@ func (gr *GenericReconciler) reconcileGroupOfObjects(objs []*unstructured.Unstru
 
 // allObjectsValidated checks whether all unstructured objects passed as argument are validated
 // and thus present in the cache
-func (gr *GenericReconciler) allObjectsValidated(objs []*unstructured.Unstructured, namespaceID string) bool {
+func (gr *LegacyGenericReconciler) allObjectsValidated(objs []*unstructured.Unstructured, namespaceID string) bool {
 	allObjectsValidated := true
 	// we must be sure that all objects in the given group are cached (validated)
 	// see DVO-103
@@ -367,7 +366,7 @@ func (gr *GenericReconciler) allObjectsValidated(objs []*unstructured.Unstructur
 	return allObjectsValidated
 }
 
-func (gr *GenericReconciler) unstructuredToTyped(obj *unstructured.Unstructured) (client.Object, error) {
+func (gr *LegacyGenericReconciler) unstructuredToTyped(obj *unstructured.Unstructured) (client.Object, error) {
 	typedResource, err := gr.lookUpType(obj)
 	if err != nil {
 		return nil, fmt.Errorf("looking up object type: %w", err)
@@ -380,7 +379,7 @@ func (gr *GenericReconciler) unstructuredToTyped(obj *unstructured.Unstructured)
 	return typedResource.(client.Object), nil
 }
 
-func (gr *GenericReconciler) lookUpType(obj *unstructured.Unstructured) (runtime.Object, error) {
+func (gr *LegacyGenericReconciler) lookUpType(obj *unstructured.Unstructured) (runtime.Object, error) {
 	gvk := obj.GetObjectKind().GroupVersionKind()
 	typedObj, err := gr.client.Scheme().New(gvk)
 	if err != nil {
@@ -390,7 +389,7 @@ func (gr *GenericReconciler) lookUpType(obj *unstructured.Unstructured) (runtime
 	return typedObj, nil
 }
 
-func (gr *GenericReconciler) handleResourceDeletions() {
+func (gr *LegacyGenericReconciler) handleResourceDeletions() {
 	for k, v := range *gr.objectValidationCache {
 		if gr.currentObjects.has(k) {
 			continue
@@ -413,7 +412,7 @@ func (gr *GenericReconciler) handleResourceDeletions() {
 }
 
 // getNamespacedResourcesGVK filters APIResources and returns the ones within a namespace
-func (gr GenericReconciler) getNamespacedResourcesGVK(resources []metav1.APIResource) []schema.GroupVersionKind {
+func (gr LegacyGenericReconciler) getNamespacedResourcesGVK(resources []metav1.APIResource) []schema.GroupVersionKind {
 	namespacedResources := make([]schema.GroupVersionKind, 0)
 	for _, resource := range resources {
 		if resource.Namespaced {

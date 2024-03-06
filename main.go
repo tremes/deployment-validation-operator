@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
+
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
@@ -25,7 +26,6 @@ import (
 	"github.com/go-logr/logr"
 	osappsv1 "github.com/openshift/api/apps/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -136,20 +136,18 @@ func setupManager(logger logr.Logger, opts options.Options) (manager.Manager, er
 
 	logger.Info("Initialize Reconciler")
 
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	cli, err := newClient(mgr.GetConfig(), client.Options{})
 	if err != nil {
-		return nil, fmt.Errorf("initializing discovery client: %w", err)
+		return nil, fmt.Errorf("failed to create client: %v", err)
 	}
-
-	gr, err := controller.NewGenericReconciler(mgr.GetClient(), discoveryClient, cmWatcher, validationEngine)
+	validationController, err := controller.NewController(cli, logger, validationEngine)
 	if err != nil {
-		return nil, fmt.Errorf("initializing generic reconciler: %w", err)
+		return nil, fmt.Errorf("failed to create generic rencociler: %v", err)
 	}
-
-	if err = gr.AddToManager(mgr); err != nil {
-		return nil, fmt.Errorf("adding generic reconciler to manager: %w", err)
+	err = validationController.SetupWithManager(mgr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup: %v", err)
 	}
-
 	return mgr, nil
 }
 
