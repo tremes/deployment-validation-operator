@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -140,10 +141,12 @@ func setupManager(logger logr.Logger, opts options.Options) (manager.Manager, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %v", err)
 	}
-	validationController, err := controller.NewController(cli, logger, validationEngine)
+	validationController, err := controller.NewController(cli, logger, validationEngine, cmWatcher)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create generic rencociler: %v", err)
 	}
+	// TODO we should probably not use background context
+	go validationController.ListenToConfigChanges(context.Background())
 	err = validationController.SetupWithManager(mgr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup: %v", err)

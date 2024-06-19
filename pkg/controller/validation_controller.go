@@ -21,13 +21,17 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
+	"github.com/app-sre/deployment-validation-operator/pkg/configmap"
 	"github.com/app-sre/deployment-validation-operator/pkg/utils"
 	"github.com/app-sre/deployment-validation-operator/pkg/validations"
 	"github.com/go-logr/logr"
 	v1apps "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	v1policy "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -52,34 +56,33 @@ type ValidationController struct {
 	validationEngine      validations.Interface
 	objectValidationCache *validationCache
 	currentObjects        *validationCache
+	cmWatcher             *configmap.Watcher
 }
 
-func NewController(cli client.Client, log logr.Logger, validationEngine validations.Interface) (*ValidationController, error) {
+func NewController(cli client.Client, log logr.Logger, validationEngine validations.Interface, cmWatcher *configmap.Watcher) (*ValidationController, error) {
 	reconciler := &ValidationController{
 		Client:           cli,
 		Log:              log,
 		validationEngine: validationEngine,
+		cmWatcher:        cmWatcher,
 		resourceGVKs: []schema.GroupVersionKind{
-			schema.GroupVersionKind{
-				Group:   "",
-				Version: "v1",
-				Kind:    "Pod",
-			},
-			schema.GroupVersionKind{
-				Group:   "",
-				Version: "v1",
-				Kind:    "Service",
-			},
-			schema.GroupVersionKind{
-				Group:   "apps",
-				Version: "v1",
-				Kind:    "Deployment",
-			},
-			schema.GroupVersionKind{
-				Group:   "policy",
-				Version: "v1",
-				Kind:    "PodDisruptionBudget",
-			},
+			schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Pod"},
+			schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Service"},
+			schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ReplicationController"},
+			schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ServiceAccount"},
+			schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
+			schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "DaemonSet"},
+			schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "ReplicaSet"},
+			schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "StatefulSet"},
+			schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "CronJob"},
+			schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "Job"},
+			schema.GroupVersionKind{Group: "policy", Version: "v1", Kind: "PodDisruptionBudget"},
+			schema.GroupVersionKind{Group: "networking.k8s.io", Version: "v1", Kind: "NetworkPolicy"},
+			schema.GroupVersionKind{Group: "networking.k8s.io", Version: "v1", Kind: "Ingress"},
+			schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "Role"},
+			schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRoleBinding"},
+			schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"},
+			schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "RoleBinding"},
 		},
 		objectValidationCache: newValidationCache(),
 		currentObjects:        newValidationCache(),
@@ -157,7 +160,17 @@ func (v *ValidationController) SetupWithManager(mgr ctrl.Manager) error {
 		Named("ValidationController").
 		Watches(&v1policy.PodDisruptionBudget{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1apps.Deployment{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1apps.DaemonSet{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1apps.ReplicaSet{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1apps.StatefulSet{}, &handler.EnqueueRequestForObject{}).
+		Watches(&networkingv1.NetworkPolicy{}, &handler.EnqueueRequestForObject{}).
+		Watches(&networkingv1.Ingress{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1.Service{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1.ReplicationController{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1.ServiceAccount{}, &handler.EnqueueRequestForObject{}).
+		Watches(&batchv1.Job{}, &handler.EnqueueRequestForObject{}).
+		Watches(&batchv1.CronJob{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(ue event.UpdateEvent) bool {
 				if v.isNamespaceExcluded(ue.ObjectNew.GetNamespace()) {
@@ -322,4 +335,35 @@ func (gr *ValidationController) handleResourceDeletions(namespaceUID string) {
 
 	}
 	gr.currentObjects.drain()
+}
+
+func (v *ValidationController) ListenToConfigChanges(ctx context.Context) {
+	for {
+		select {
+		case <-v.cmWatcher.ConfigChanged():
+			cfg := v.cmWatcher.GetConfig()
+			v.validationEngine.SetConfig(cfg)
+
+			err := v.validationEngine.InitRegistry()
+			if err != nil {
+				v.Log.Error(
+					err,
+					fmt.Sprintf("error updating configuration from ConfigMap: %v\n", cfg),
+				)
+				continue
+			}
+
+			v.objectValidationCache.drain()
+			v.validationEngine.ResetMetrics()
+
+			v.Log.V(1).Info(
+				"Current set of enabled checks",
+				"checks", strings.Join(v.validationEngine.GetEnabledChecks(), ", "),
+			)
+			v.Log.Info("The ConfigMap has been updated")
+
+		case <-ctx.Done():
+			return
+		}
+	}
 }

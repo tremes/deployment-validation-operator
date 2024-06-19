@@ -1029,7 +1029,7 @@ func TestListLimit(t *testing.T) {
 	assert.Equal(t, int64(2), testReconciler.listLimit)
 }
 
-func createTestReconciler(scheme *runtime.Scheme, objects []client.Object) (*ValidationController, error) {
+func createTestReconciler(scheme *runtime.Scheme, objects []client.Object) (*LegacyGenericReconciler, error) {
 	cliBuilder := clifake.NewClientBuilder()
 	if scheme != nil {
 		cliBuilder.WithScheme(scheme)
@@ -1044,7 +1044,7 @@ func createTestReconciler(scheme *runtime.Scheme, objects []client.Object) (*Val
 	if err != nil {
 		return nil, err
 	}
-	return NewController(client, cli.Discovery(), &configmap.Watcher{}, ve)
+	return NewGenericReconciler(client, cli.Discovery(), &configmap.Watcher{}, ve)
 }
 
 /* Benchmark used reverted changes in d80ec1f. Preserving it just in case the changes come back in near future.
